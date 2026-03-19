@@ -1,5 +1,6 @@
 import os
 import argparse
+import subprocess
 from docx import Document
 from fpdf import FPDF
 from tqdm import tqdm
@@ -15,33 +16,66 @@ def find_word_files(input_folder):
                 word_files.append(os.path.join(root, file))
     return word_files
 
+def convert_docx_to_pdf_soffice(docx_path, out_dir):
+    """
+    Use LibreOffice soffice for high-quality conversion.
+    """
+    # Check common paths for soffice
+    soffice_path = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+    if not os.path.exists(soffice_path):
+        soffice_path = "soffice" # Hope it's in PATH
+    
+    cmd = [
+        soffice_path,
+        "--headless",
+        "--convert-to", "pdf",
+        "--outdir", out_dir,
+        docx_path
+    ]
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 def convert_docx_to_pdf_pure_python(docx_path, pdf_path):
     """
-    Pure Python conversion for basic docx to pdf (no Office needed).
+    Pure Python conversion for docx to pdf with basic styling (bold, italic, headers).
+    Fallback if no Office is installed.
     """
     doc = Document(docx_path)
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Use a standard font that supports most characters
+    # Base font
     pdf.set_font("helvetica", size=11)
     
     for para in doc.paragraphs:
         if para.text.strip():
-            # Basic text wrapping and addition
-            # FPDF.multi_cell(w, h, txt, ...)
-            pdf.multi_cell(0, 8, txt=para.text.encode('latin-1', 'replace').decode('latin-1'))
-            pdf.ln(2)
+            # Check for heading levels (more robust check)
+            if para.style and hasattr(para.style, 'name') and para.style.name.startswith('Heading'):
+                pdf.set_font("helvetica", "B", 14)
+                pdf.multi_cell(0, 10, text=para.text.encode('latin-1', 'replace').decode('latin-1'))
+                pdf.ln(2)
+                pdf.set_font("helvetica", size=11)
+            else:
+                # Handle runs for bold/italic within paragraph
+                for run in para.runs:
+                    style = ""
+                    if run.bold: style += "B"
+                    if run.italic: style += "I"
+                    
+                    pdf.set_font("helvetica", style, size=11)
+                    clean_text = run.text.encode('latin-1', 'replace').decode('latin-1')
+                    pdf.write(5, clean_text)
+                pdf.ln(8) # Paragraph spacing
             
     pdf.output(pdf_path)
 
-def convert_recursive(input_path, output_path=None):
+def convert_recursive(input_path):
     """
     Convert Word documents to PDF recursively.
     """
-    # Check if Microsoft Word is installed for docx2pdf
+    # Check for engines
     has_word = os.path.exists("/Applications/Microsoft Word.app")
+    has_libre = os.path.exists("/Applications/LibreOffice.app/Contents/MacOS/soffice")
     
     if os.path.isfile(input_path):
         word_files = [input_path]
@@ -56,16 +90,19 @@ def convert_recursive(input_path, output_path=None):
         return
 
     print(f"Found {len(word_files)} Word documents.")
+    print(f"Using Conversion Engine: {'MS Word' if has_word else 'LibreOffice' if has_libre else 'Pure-Python (Basic)'}")
     
     for file_path in tqdm(word_files, desc="Converting"):
-        dest_path = file_path.rsplit('.', 1)[0] + '.pdf'
-        
         try:
             if has_word:
                 from docx2pdf import convert
-                convert(file_path, dest_path)
+                convert(file_path)
+            elif has_libre:
+                out_dir = os.path.dirname(file_path)
+                convert_docx_to_pdf_soffice(file_path, out_dir)
             else:
                 # Use pure python fallback
+                dest_path = file_path.rsplit('.', 1)[0] + '.pdf'
                 convert_docx_to_pdf_pure_python(file_path, dest_path)
         except Exception as e:
             print(f"\nError converting {file_path}: {e}")
@@ -75,18 +112,15 @@ def convert_recursive(input_path, output_path=None):
 def main():
     parser = argparse.ArgumentParser(description="Recursively convert Word documents to PDF.")
     parser.add_argument("input", help="Input file or folder path")
-    parser.add_argument("-o", "--output", help="Output file path (for single file) or folder")
     
     args = parser.parse_args()
-    
     input_path = os.path.abspath(args.input)
-    output_path = os.path.abspath(args.output) if args.output else None
     
     if not os.path.exists(input_path):
         print(f"Error: Path does not exist: {input_path}")
         return
 
-    convert_recursive(input_path, output_path)
+    convert_recursive(input_path)
 
 if __name__ == "__main__":
     main()

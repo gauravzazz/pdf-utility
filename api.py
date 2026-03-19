@@ -84,12 +84,21 @@ async def word2pdf_endpoint(
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # Check if Microsoft Word is installed for docx2pdf
+        # Check for engines
         has_word = os.path.exists("/Applications/Microsoft Word.app")
+        has_libre = os.path.exists("/Applications/LibreOffice.app/Contents/MacOS/soffice")
         
         if has_word:
             from docx2pdf import convert
             convert(input_path, output_path)
+        elif has_libre:
+            # soffice outputs to the directory
+            word2pdf.convert_docx_to_pdf_soffice(input_path, TEMP_DIR)
+            actual_output = input_path.rsplit('.', 1)[0] + '.pdf'
+            if os.path.exists(actual_output):
+                shutil.move(actual_output, output_path)
+            else:
+                raise HTTPException(status_code=500, detail="LibreOffice conversion failed to produce a file.")
         else:
             word2pdf.convert_docx_to_pdf_pure_python(input_path, output_path)
         
