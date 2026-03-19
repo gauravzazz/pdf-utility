@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 import invertPdf
 import mergePdf
+import word2pdf
 
 app = FastAPI(title="PDF Utility API")
 
@@ -44,8 +45,6 @@ async def invert_endpoint(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    # Finally block removed for now to ensure file persists during response; 
-    # a production app would use BackgroundTasks to clean up.
 
 @app.post("/merge")
 async def merge_endpoint(
@@ -66,6 +65,35 @@ async def merge_endpoint(
         mergePdf.merge_pdfs(input_paths, output_path, duplex_safe=duplex)
         
         return FileResponse(output_path, filename="merged.pdf", media_type="application/pdf")
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/word2pdf")
+async def word2pdf_endpoint(
+    file: UploadFile = File(...)
+):
+    if not file.filename.lower().endswith((".docx", ".doc")):
+        raise HTTPException(status_code=400, detail="Only Word documents (.doc, .docx) are supported.")
+    
+    session_id = str(uuid.uuid4())
+    input_path = os.path.join(TEMP_DIR, f"{session_id}_{file.filename}")
+    output_path = os.path.join(TEMP_DIR, f"{session_id}_converted.pdf")
+    
+    try:
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Check if Microsoft Word is installed for docx2pdf
+        has_word = os.path.exists("/Applications/Microsoft Word.app")
+        
+        if has_word:
+            from docx2pdf import convert
+            convert(input_path, output_path)
+        else:
+            word2pdf.convert_docx_to_pdf_pure_python(input_path, output_path)
+        
+        return FileResponse(output_path, filename=f"{file.filename.rsplit('.', 1)[0]}.pdf", media_type="application/pdf")
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
