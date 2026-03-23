@@ -2,6 +2,8 @@
 
 A collection of professional Python scripts for processing PDF files, optimized for print-friendly output and efficient document merging.
 
+These tools were originally built to power the backend document processing for [OnlinePrintOut.com](https://onlineprintout.com/), ensuring an optimal printing experience by automatically optimizing dark-mode documents and securely handling duplex printing.
+
 ## Features
 
 - **Invert PDF (`invertPdf.py`)**: 
